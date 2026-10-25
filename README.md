@@ -1,4 +1,4 @@
-# ⛵ Sail Emblems
+# Sail Emblems
 
 **Paint emblems and patterns on your sails.** A [BepInEx](https://github.com/BepInEx/BepInEx) mod for **Sailwind**.
 
