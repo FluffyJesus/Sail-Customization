@@ -26,9 +26,9 @@ Bring your own colours to sea: a red lion on the mainsail, a seigaiha wave patte
 - **48 emblems and 11 whole-sail patterns**, 13 period paints (madder red, ochre, navy, lamp black, bone white...).
 - **New and installed sails** can be painted at the shipyard; the order pays for it, Cancel takes it back.
 - **Size and place:** emblems can be scaled and moved up, down and sideways; patterns can be scaled up and across the sail and shifted both ways.
+- **Option for painting front side only:** paint one face of a sail and leave the back plain, like real painted canvas seen from behind.
 - **Laid out on the real cloth:** an emblem stands upright and keeps its proportions on every sail, even where the game's texture runs sideways or is warped; it shrinks to stay on narrow triangles.
 - **Patterns drawn from the sail's own shape:** stripes and crosses keep their width on a wider sail, splits and crosses meet at the middle of a triangular sail, the border follows the cloth's edge. On gaffs and lugs a pattern runs along the boom.
-- **Option for painting front side only:** paint one face of a sail and leave the back plain, like real painted canvas seen from behind.
 - **Kept everywhere:** furling and setting, recolouring, leaving the shipyard, saving and loading.
 - **Your own PNGs** show up in the paint window next to the built-in ones.
 
