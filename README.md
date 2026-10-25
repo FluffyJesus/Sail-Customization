@@ -88,7 +88,6 @@ See **[EMBLEMS.md](EMBLEMS.md)** for what a picture needs and the quickest ways 
 - **Sail Damage** (1.0.2 or newer): a painted sail tears with its emblem, patches are plain sailcloth, and a torn sail can be repainted. With older versions a torn sail keeps the emblem it had when it first tore.
 - **Studding Sails:** studding sails keep plain canvas.
 - **Shipyard Expansion:** its sail texture choice is painted over.
-- **More Sailwind Sails** and other mods' sails built on the game's sail system can be painted.
 - **Not paintable:** the junk's square sail (its cloth has no texture layout, the game shows it in one flat colour) and the fin sail (its texture layout is too warped for a clean picture). The button says "Can't paint this sail".
 
 <img width="1406" height="1102" alt="image" src="https://github.com/user-attachments/assets/5537a68e-e2ec-4826-a729-9bc212d4872b" />
