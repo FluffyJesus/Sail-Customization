@@ -28,6 +28,7 @@ Bring your own colours to sea: a red lion on the mainsail, a seigaiha wave patte
 - **Size and place:** emblems can be scaled and moved up, down and sideways; patterns can be scaled up and across the sail and shifted both ways.
 - **Laid out on the real cloth:** an emblem stands upright and keeps its proportions on every sail, even where the game's texture runs sideways or is warped; it shrinks to stay on narrow triangles.
 - **Patterns drawn from the sail's own shape:** stripes and crosses keep their width on a wider sail, splits and crosses meet at the middle of a triangular sail, the border follows the cloth's edge. On gaffs and lugs a pattern runs along the boom.
+- **Option for painting front side only:** paint one face of a sail and leave the back plain, like real painted canvas seen from behind.
 - **Kept everywhere:** furling and setting, recolouring, leaving the shipyard, saving and loading.
 - **Your own PNGs** show up in the paint window next to the built-in ones.
 
@@ -85,7 +86,7 @@ See **[EMBLEMS.md](EMBLEMS.md)** for what a picture needs and the quickest ways 
 
 - **Requires** only BepInEx 5. Every other mod named here is optional.
 - **Saves:** the paint is stored in the save's own mod data, matched to each sail by its place on the mast. Saves without the mod load fine (plain sails); removing the mod leaves plain sails.
-- **Sail Damage** (1.0.2 or newer): a painted sail tears with its emblem, patches are plain sailcloth, and a torn sail can be repainted. With older versions a torn sail keeps the emblem it had when it first tore.
+- **Sail Damage (1.0.3 recommended, 1.0.2 at least):** a painted sail tears with its emblem, patches are plain sailcloth, a torn sail can be repainted, and a sail painted on its front side only stays so when torn and after a shipyard repair. With versions before 1.0.2 a torn sail keeps the emblem it had when it first tore.
 - **Studding Sails:** studding sails keep plain canvas.
 - **Shipyard Expansion:** its sail texture choice is painted over.
 - **Not paintable:** the junk's square sail (its cloth has no texture layout, the game shows it in one flat colour) and the fin sail (its texture layout is too warped for a clean picture). The button says "Can't paint this sail".
