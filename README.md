@@ -93,6 +93,6 @@ See **[EMBLEMS.md](EMBLEMS.md)** for what a picture needs and the quickest ways 
 - **More Sailwind Sails** and other mods' sails built on the game's sail system can be painted.
 - **Not paintable:** the junk's square sail (its cloth has no texture layout, the game shows it in one flat colour) and the fin sail (its texture layout is too warped for a clean picture). The button says "Can't paint this sail".
 
-<img width="1200" height="480" alt="image" src="https://github.com/user-attachments/assets/3e231a49-15db-480d-8ab1-3fd6cc23ddbb" />
+<img width="1406" height="1102" alt="image" src="https://github.com/user-attachments/assets/5537a68e-e2ec-4826-a729-9bc212d4872b" />
 
 <p align="center"><i>Fly your colours.</i></p>
