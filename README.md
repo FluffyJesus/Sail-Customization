@@ -4,7 +4,7 @@
 
 Bring your own colours to sea: a red lion on the mainsail, a seigaiha wave pattern on a lateen, a saltire on the topsail. Paint at any shipyard, on new sails and on the ones you already have. The paint soaks into the canvas, stays upright on every kind of sail, and stays with the boat through furling, storms, shipyard visits and saves.
 
-<!-- screenshot: a brig with a swan on the course and a saltire on the topsail -->
+<img width="1001" height="842" alt="image" src="https://github.com/user-attachments/assets/134ae748-a6e1-4981-bde0-3949ca0ce65b" />
 
 ---
 
@@ -47,11 +47,12 @@ Square sails read correctly from the deck looking forward; fore-and-aft sails re
 
 ## Emblems and patterns
 
-**Emblems:** anchor, castle tower, celtic cross, compass rose, crab, crescent, crescent and star, crossed halberds, crossed keys, crossed sabres, cross of Christ, cross pattée, crown, dharma wheel, dhow, double eagle, dragon rampant, dragon ring, eye, eye and ankh, fleur-de-lis, hamsa, hourglass, interlaced star, koi, laurel wreath, lion rampant, lotus, menorah, mermaid, mitsudomoe, octopus and anchor, rising sun, sakura, scallop shell, shield, ship's wheel, skull and bones, eight-pointed star, sun, swan, torii, trident, turtles, vegvisir, waves, whale, yin and yang.
+<img width="1100" height="2460" alt="image" src="https://github.com/user-attachments/assets/cb9862f8-5100-48b3-b4ad-c2a10641325b" />
 
-**Patterns:** horizontal band, border, chevron, cross, top half, Nordic cross, quartered, saltire, seigaiha waves, horizontal stripes, vertical stripes.
+<img width="1200" height="480" alt="image" src="https://github.com/user-attachments/assets/2f23efba-965e-4094-9d0c-668d956db4e5" />
 
-Sources and licences of the pictures: [art/SOURCES.md](art/SOURCES.md). Drawn for the mod or converted from public-domain (CC0) artwork.
+
+Sources and licences of the pictures are drawn for the mod or converted from public-domain (CC0) artwork.
 
 ## Your own pictures
 
@@ -92,23 +93,6 @@ See **[EMBLEMS.md](EMBLEMS.md)** for what a picture needs and the quickest ways 
 - **More Sailwind Sails** and other mods' sails built on the game's sail system can be painted.
 - **Not paintable:** the junk's square sail (its cloth has no texture layout, the game shows it in one flat colour) and the fin sail (its texture layout is too warped for a clean picture). The button says "Can't paint this sail".
 
-## Building from source
-
-```
-dotnet build -c Release -p:Deploy=true
-```
-
-builds `SailEmblems.dll` and copies it to `BepInEx/plugins/SailEmblems`. Set the game folder with `-p:GameDir="D:\Games\Sailwind"`. Built-in pictures are the PNGs in `Assets/emblems` and `Assets/patterns`, embedded in the DLL. Their sources (SVG and the Python scripts that draw and trace them) are in `art/`.
-
-## Changes
-
-- **1.0.0:** first release. The fin sail is not offered for painting (warped texture layout).
-- **0.4.0:** pattern scale up and across, shifts both ways, emblems shift sideways, "Along the foot", "Reset".
-- **0.3.0:** patterns drawn from the sail's own shape; texture laid triangle by triangle (fin sail, gaffs); emblems shrink to stay on narrow sails; bigger textures and smooth edges on big sails; the junk's square sail says it can't be painted.
-- **0.2.1:** upright emblems on sails whose texture runs sideways; Shipyard Expansion textures; bigger paint swatches; new emblems (menorah, swan, torii, turtles); Sail Damage patches without the emblem.
-- **0.2.0:** paint saved and kept through the shipyard; installed sails repaintable; furling and recolouring fixed; cursor and click-through fixed; Mirror; Sail Damage and Studding Sails support.
-- **0.1.0:** first test version.
-
----
+<img width="1200" height="480" alt="image" src="https://github.com/user-attachments/assets/3e231a49-15db-480d-8ab1-3fd6cc23ddbb" />
 
 <p align="center"><i>Fly your colours.</i></p>
