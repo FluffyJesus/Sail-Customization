@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -158,7 +158,7 @@ namespace SailEmblems
                     }
                     if (sb.Length == 0) GameState.modData.Remove(Plugin.GUID);
                     else GameState.modData[Plugin.GUID] = sb.ToString();
-                    Plugin.Log.LogInfo("[Emblems] saved " + all.Count + " painted sails");
+                    Plugin.Debug("[Emblems] saved " + all.Count + " painted sails");
                 }
                 catch (Exception e)
                 {
@@ -184,7 +184,7 @@ namespace SailEmblems
                     }
                 int n = pending.Count;
                 ApplyPending(true);
-                Plugin.Log.LogInfo("[Emblems] loaded " + n + " painted sails" + (pending.Count > 0 ? ", " + pending.Count + " not found yet" : ""));
+                Plugin.Debug("[Emblems] loaded " + n + " painted sails" + (pending.Count > 0 ? ", " + pending.Count + " not found yet" : ""));
             }
         }
 

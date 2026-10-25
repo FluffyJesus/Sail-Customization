@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using UnityEngine;
 
 namespace SailEmblems
@@ -15,6 +15,7 @@ namespace SailEmblems
         public float OffsetX;  // to the right (+) / left (-) as a share of the sail width
         public bool Mirror;    // painted the other way round (left and right swapped)
         public bool AlongFoot; // pattern: laid along the sail's foot (the boom of a gaff) instead of level
+        public bool FrontOnly; // painted on the front face of the cloth only, the back stays plain (1.1, a test)
 
         public bool IsPattern => Id != null && Id.StartsWith("p:", StringComparison.Ordinal);
 
@@ -37,7 +38,7 @@ namespace SailEmblems
         {
             if (IsEmpty || o.IsEmpty)
                 return IsEmpty == o.IsEmpty;
-            return Id == o.Id && Color == o.Color && Mirror == o.Mirror && AlongFoot == o.AlongFoot &&
+            return Id == o.Id && Color == o.Color && Mirror == o.Mirror && AlongFoot == o.AlongFoot && FrontOnly == o.FrontOnly &&
                    P(Size) == P(o.Size) && P(Stretch) == P(o.Stretch) && P(Offset) == P(o.Offset) && P(OffsetX) == P(o.OffsetX);
         }
 
@@ -51,7 +52,7 @@ namespace SailEmblems
         public string Encode()
         {
             if (IsEmpty) return "";
-            int flags = (Mirror ? 1 : 0) | (AlongFoot ? 2 : 0);
+            int flags = (Mirror ? 1 : 0) | (AlongFoot ? 2 : 0) | (FrontOnly ? 4 : 0);
             return Id + "|" + Color + "|" + P(Size) + "|" + P(Offset) + "|" + flags + "|" + P(OffsetX) + "|" + P(Stretch);
         }
 
@@ -70,7 +71,7 @@ namespace SailEmblems
             {
                 Id = p[0], Color = c, Size = size / 100f, Offset = Mathf.Clamp(off / 100f, -0.5f, 0.5f),
                 OffsetX = Mathf.Clamp(offX / 100f, -0.5f, 0.5f), Stretch = Mathf.Clamp(stretch / 100f, 0.2f, 4f),
-                Mirror = (flags & 1) != 0, AlongFoot = (flags & 2) != 0,
+                Mirror = (flags & 1) != 0, AlongFoot = (flags & 2) != 0, FrontOnly = (flags & 4) != 0,
             };
             // before 0.4 patterns had no scale (their saved size was the emblem default, unused)
             if (st.IsPattern && p.Length <= 6) st.Size = 1f;

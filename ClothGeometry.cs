@@ -23,6 +23,7 @@ namespace SailEmblems
         public float MetresPerTexel;
         public string Info;
         public float[] VX, VY;          // the cloth's vertices
+        public string FrontSide = "unknown"; // where the cloth's front faces look
         public Vector2 Foot = Vector2.right; // along the foot of the sail (its lower edge), pointing right
 
         private float mapX0, mapY0, cell;
@@ -44,22 +45,20 @@ namespace SailEmblems
 
         private float Edge(int x, int y) => x < 0 || y < 0 || x >= mapW || y >= mapH ? -cell : edge[y * mapW + x];
 
-        public static ClothGeometry Measure(Vector2[] uv, Vector3[] verts, int[] tris, Rect rect, Matrix4x4 toWorld, Transform ship,
-                                            float texelsPerMetre, int maxRes)
+        // Least squares world = m + A*(s-ms) + B*(t-mt): A, B are metres per s and per t, and the sail's plane.
+        private static bool Fit(Vector2[] uv, Vector3[] verts, Rect rect, Matrix4x4 toWorld, out Vector2[] st, out Vector3[] w,
+                                out Vector3 A, out Vector3 B, out Vector3 mw, out float ms, out float mt)
         {
-            var g = new ClothGeometry();
             int n = Mathf.Min(uv.Length, verts.Length);
-            var st = new Vector2[n];
-            var w = new Vector3[n];
+            st = new Vector2[n];
+            w = new Vector3[n];
             for (int i = 0; i < n; i++)
             {
                 st[i] = new Vector2((uv[i].x - rect.xMin) / rect.width, (uv[i].y - rect.yMin) / rect.height);
                 w[i] = toWorld.MultiplyPoint3x4(verts[i]);
             }
-
-            // Least squares world = m + A*(s-ms) + B*(t-mt): A, B are metres per s and per t, and the sail's plane.
-            Vector3 mw = Vector3.zero;
-            float ms = 0f, mt = 0f;
+            mw = Vector3.zero;
+            ms = 0f; mt = 0f;
             for (int i = 0; i < n; i++) { mw += w[i]; ms += st[i].x; mt += st[i].y; }
             if (n > 0) { mw /= n; ms /= n; mt /= n; }
             float sss = 0f, stt = 0f, sst = 0f;
@@ -72,7 +71,7 @@ namespace SailEmblems
                 sws += dw * ds; swt += dw * dt;
             }
             float det = sss * stt - sst * sst;
-            Vector3 A = Vector3.right * 5f, B = Vector3.up * 5f; // a 5 m square, for a cloth that cannot be measured
+            A = Vector3.right * 5f; B = Vector3.up * 5f; // a 5 m square, for a cloth that cannot be measured
             bool fitted = n >= 3 && Mathf.Abs(det) > 1e-9f;
             if (fitted)
             {
@@ -81,6 +80,34 @@ namespace SailEmblems
                 fitted = A.magnitude > 1e-4f && B.magnitude > 1e-4f && Vector3.Cross(A, B).magnitude > 1e-8f;
                 if (!fitted) { A = Vector3.right * 5f; B = Vector3.up * 5f; }
             }
+            return fitted;
+        }
+
+        // Canvas size from the metres it covers: the lateen is 16 x 20 m, and 1024 texels across it showed steps (Кэп).
+        // (1.0.0 sized it for the most stretched part of a warped layout instead: bigger textures, the game froze
+        // for half a second on every click at the shipyard, Кэп. The warped fin sail is not painted at all now.)
+        private static int Side(Vector3 perUnit, float texelsPerMetre, int maxRes) =>
+            Mathf.Clamp(Pow2(Mathf.RoundToInt(perUnit.magnitude * texelsPerMetre)), 256, maxRes);
+
+        /// <summary>The canvas size Measure will come to, without the rest: the game's canvas is read at it first.</summary>
+        public static void Size(Vector2[] uv, Vector3[] verts, Rect rect, Matrix4x4 toWorld, float texelsPerMetre, int maxRes, out int w, out int h)
+        {
+            Fit(uv, verts, rect, toWorld, out _, out _, out Vector3 A, out Vector3 B, out _, out _, out _);
+            w = Side(A, texelsPerMetre, maxRes);
+            h = Side(B, texelsPerMetre, maxRes);
+        }
+
+        /// <summary>
+        /// Pure arithmetic on copies, no Unity objects: runs off the main thread (1.0.1). The ship's forward and
+        /// starboard directions come in as vectors for that reason.
+        /// </summary>
+        public static ClothGeometry Measure(Vector2[] uv, Vector3[] verts, int[] tris, Rect rect, Matrix4x4 toWorld, Vector3 fwd, Vector3 starboard,
+                                            float texelsPerMetre, int maxRes)
+        {
+            var g = new ClothGeometry();
+            bool fitted = Fit(uv, verts, rect, toWorld, out Vector2[] st, out Vector3[] w, out Vector3 A, out Vector3 B,
+                              out Vector3 mw, out float ms, out float mt);
+            int n = st.Length;
             Vector3 normal = Vector3.Cross(A, B).normalized;
 
             // Up: the world's, laid into the sail's plane (a jib leans).
@@ -89,7 +116,6 @@ namespace SailEmblems
             // Right as read by someone on board: a square sail seen from aft looking forward, a fore-and-aft sail seen
             // from starboard. 0.1 always used the ship's right, which lies along a gaff only by chance, and took
             // transform.root for the ship, which need not be the boat.
-            Vector3 fwd = ship != null ? ship.forward : Vector3.forward, starboard = ship != null ? ship.right : Vector3.right;
             Vector3 view = Mathf.Abs(Vector3.Dot(normal, fwd)) >= Mathf.Abs(Vector3.Dot(normal, starboard)) ? fwd : -starboard;
             Vector3 right = Vector3.Cross(up, normal);
             if (Vector3.Dot(right, Vector3.Cross(Vector3.up, view)) < 0f) right = -right;
@@ -137,11 +163,8 @@ namespace SailEmblems
                 g.CenterS = g.CenterT = 0.5f;
             }
 
-            // Canvas size from the metres it covers: the lateen is 16 x 20 m, and 1024 texels across it showed steps (Кэп).
-            // (1.0.0 sized it for the most stretched part of a warped layout instead: bigger textures, the game froze
-            // for half a second on every click at the shipyard, Кэп. The warped fin sail is not painted at all now.)
-            g.W = Mathf.Clamp(Pow2(Mathf.RoundToInt(A.magnitude * texelsPerMetre)), 256, maxRes);
-            g.H = Mathf.Clamp(Pow2(Mathf.RoundToInt(B.magnitude * texelsPerMetre)), 256, maxRes);
+            g.W = Side(A, texelsPerMetre, maxRes);
+            g.H = Side(B, texelsPerMetre, maxRes);
             g.MetresPerTexel = Mathf.Max(A.magnitude / g.W, B.magnitude / g.H);
 
             // Texels: the fit everywhere, then each triangle with its own corners.
@@ -174,6 +197,20 @@ namespace SailEmblems
                             g.Y[i] = l0 * vy[a] + l1 * vy[b] + l2 * vy[c];
                         });
                 }
+
+            // Which way the cloth's front faces look (Unity: Cross(b - a, c - a) of a front-facing triangle): a one-sided
+            // layer is seen from that side only.
+            Vector3 face = Vector3.zero;
+            if (tris != null)
+                for (int k = 0; k + 2 < tris.Length; k += 3)
+                {
+                    int a = tris[k], b = tris[k + 1], c = tris[k + 2];
+                    if (a < n && b < n && c < n) face += Vector3.Cross(w[b] - w[a], w[c] - w[a]);
+                }
+            float df = Vector3.Dot(face, fwd), dsb = Vector3.Dot(face, starboard);
+            g.FrontSide = face.sqrMagnitude < 1e-12f ? "unknown"
+                : Mathf.Abs(df) >= Mathf.Abs(dsb) ? (df > 0f ? "forward (seen from ahead)" : "aft (seen from the deck)")
+                : (dsb > 0f ? "starboard" : "port");
 
             g.MakeMap(vx, vy, tris, n);
             g.VX = vx;

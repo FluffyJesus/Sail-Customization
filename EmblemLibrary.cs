@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using BepInEx;
@@ -31,7 +31,7 @@ namespace SailEmblems
         {
             if (x < 0f || y < 0f || x > 1f || y > 1f) return 0f;
             if (footprint <= 1f) return Sample(0, x, y);
-            if (mips == null) MakeMips();
+            if (mips == null) lock (this) if (mips == null) MakeMips(); // pool threads paint several sails at once
             float lod = Mathf.Min(Mathf.Log(footprint, 2f), mips.Length - 1);
             int l = Mathf.FloorToInt(lod);
             float a = Sample(l, x, y);
@@ -86,15 +86,19 @@ namespace SailEmblems
             get
             {
                 if (solid != null) return solid;
-                var list = new List<Vector2>();
-                const int N = 40;
-                for (int j = 0; j < N; j++)
-                    for (int i = 0; i < N; i++)
-                    {
-                        var p = new Vector2((i + 0.5f) / N, (j + 0.5f) / N);
-                        if (Sample(p.x, p.y) > 0.5f) list.Add(p);
-                    }
-                return solid = list.ToArray();
+                lock (this) // pool threads paint several sails at once
+                {
+                    if (solid != null) return solid;
+                    var list = new List<Vector2>();
+                    const int N = 40;
+                    for (int j = 0; j < N; j++)
+                        for (int i = 0; i < N; i++)
+                        {
+                            var p = new Vector2((i + 0.5f) / N, (j + 0.5f) / N);
+                            if (Sample(p.x, p.y) > 0.5f) list.Add(p);
+                        }
+                    return solid = list.ToArray();
+                }
             }
         }
     }

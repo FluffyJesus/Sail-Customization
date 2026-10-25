@@ -35,17 +35,23 @@ namespace SailEmblems
         private Material source;    // the game's canvas, worn again when the paint is taken off
         private Color sailColor = Color.white;
         private Material mat;       // ours
+        private Material overlay;   // Front side only: the painted canvas, one-sided, drawn over the plain double-sided one
+        private bool overlayOn, frontFailed;
+        // Front side only: a copy of ours showing the painted canvas, handed to Sail Damage to cut its holes into
+        private Material paintedTwin;
+        /// <summary>Where the cloth's front faces look, from the last painting (Front side only paints that side).</summary>
+        internal string FrontSide;
         private Texture2D painted;  // canvas + emblem
         private Texture2D clean;    // the same canvas without it, for the studding sails (only with Studding Sails)
         private Texture2D bump;
         private Texture bumpFrom;
         private Vector4 bumpKey;
         private Rect uvRect;
-        private ClothGeometry geom;
         private bool framedSet;     // measured on the set sail (furled, the bones squeeze the cloth up)
         private Vector3 frameScale;
         private bool dirty = true;
         private bool reported, noLayout;
+        private bool stalled; // nothing to paint with (unknown picture, unpaintable cloth) until the state changes
 
         internal Texture PaintedTexture => painted;
         internal Texture CleanTexture => clean;
@@ -73,6 +79,7 @@ namespace SailEmblems
             if (!e.State.Equals(st)) e.reported = false;
             e.State = st;
             e.dirty = true;
+            e.stalled = false;
             if (now) e.Refresh();
         }
 
@@ -113,7 +120,7 @@ namespace SailEmblems
             return m != null && empty != null && (m == empty || m.name.StartsWith(empty.name, StringComparison.Ordinal));
         }
 
-        private bool IsOurCopy(Material m) => m != null && painted != null && m != mat && m.mainTexture == painted;
+        private bool IsOurCopy(Material m) => m != null && mat != null && m != mat && m.mainTexture != null && m.mainTexture == mat.mainTexture;
 
         // Made from ours ("... (emblem) (Instance)"), whatever texture it has now.
         private bool IsOurs(Material m) => m != null && mat != null && m != mat && m.name.StartsWith(mat.name, StringComparison.Ordinal);
@@ -134,27 +141,36 @@ namespace SailEmblems
                 if (mat != null) TakeOff(worn);
                 return;
             }
-            if (worn == null) return;
+            if (worn == null || stalled) return;
 
             if (mat == null)
             {
-                if (IsPlaceholder(worn)) return; // furled before the game saved its canvas: wait for the real one
-                if (SailDamageLink.Draws(sail))
+                // (while the first painting is being worked out, the canvas it started from stays)
+                if (job == null)
                 {
-                    // Sail Damage made its torn canvas before we painted (loading order): ours starts from the prefab's.
-                    if (source == null) source = PrefabCanvas(out sailColor);
-                    if (source == null) return;
+                    if (IsPlaceholder(worn)) return; // furled before the game saved its canvas: wait for the real one
+                    if (SailDamageLink.Draws(sail))
+                    {
+                        // Sail Damage made its torn canvas before we painted (loading order): ours starts from the prefab's.
+                        if (source == null) source = PrefabCanvas(out sailColor);
+                        if (source == null) return;
+                    }
+                    else
+                    {
+                        source = worn;
+                        sailColor = ColorOf(worn);
+                    }
+                    dirty = true;
                 }
-                else
-                {
-                    source = worn;
-                    sailColor = ColorOf(worn);
-                }
-                dirty = true;
             }
             else if (worn != mat)
             {
-                if (IsOurCopy(worn))
+                if (worn == paintedTwin)
+                {
+                    // Sail Damage mended the sail as new and put back what it was given: ours goes on again
+                    Worn = mat;
+                }
+                else if (IsOurCopy(worn))
                 {
                     // Furl/unfurl handed back a copy of ours: wear ours again (the copy shares our texture, keep it alive).
                     Worn = mat;
@@ -169,7 +185,7 @@ namespace SailEmblems
                     // A copy of ours with another texture put in: Shipyard Expansion's sail textures (SailTextureChanger:
                     // renderer.material.mainTexture = ..., on loading and leaving the shipyard too). With our tiling it
                     // showed the whole texture sheet on the sail (Кэп). That texture is the new canvas, laid as the game's.
-                    Plugin.Log.LogInfo("[Emblems] " + sail.sailName + ": canvas texture changed to '" + (worn.mainTexture != null ? worn.mainTexture.name : "none") + "', painting it");
+                    Plugin.Debug("[Emblems] " + sail.sailName + ": canvas texture changed to '" + (worn.mainTexture != null ? worn.mainTexture.name : "none") + "', painting it");
                     if (worn.mainTexture != null) source.mainTexture = worn.mainTexture;
                     Worn = mat;
                     Destroy(worn);
@@ -178,7 +194,7 @@ namespace SailEmblems
                 else if (!IsPlaceholder(worn))
                 {
                     // Something else put a new canvas on the sail (another mod's material): paint over that one.
-                    Plugin.Log.LogInfo("[Emblems] " + sail.sailName + ": new canvas '" + worn.name + "' on the sail, painting it");
+                    Plugin.Debug("[Emblems] " + sail.sailName + ": new canvas '" + worn.name + "' on the sail, painting it");
                     source = worn;
                     sailColor = ColorOf(worn);
                     DestroyMat();
@@ -186,25 +202,43 @@ namespace SailEmblems
                 }
             }
 
+            if (mat != null)
+            {
+                // torn: Sail Damage wears its own canvas, made from the painted one (it splits it in two for the front side)
+                if (overlayOn && SailDamageLink.Draws(sail))
+                    overlayOn = false; // it already has the painted canvas (paintedTwin), the torn layer takes over
+                // mended as new: Sail Damage gave the sail back, so the front side can be painted alone again
+                else if (State.FrontOnly && !overlayOn && !frontFailed && job == null && rend.sharedMaterial == mat && !SailDamageLink.Draws(sail))
+                    dirty = true;
+                SyncOverlay();
+            }
+
+            if (job != null)
+            {
+                if (!job.Done) return;
+                Job finished = job;
+                job = null;
+                // shown even if something else was asked for meanwhile (another click): that one is started next
+                Finish(finished);
+            }
             if (!dirty && FrameStale()) dirty = true;
             if (!dirty) return;
             dirty = false;
             try
             {
-                if (!Bake()) return;
+                Begin();
             }
             catch (Exception e)
             {
                 if (!reported) Plugin.Log.LogError("[Emblems] painting " + sail.sailName + " failed: " + e);
                 reported = true;
-                return;
             }
-            if (!SailDamageLink.TakeCanvas(sail, mat, clean))
-                Worn = mat;
         }
 
         private void TakeOff(Material worn)
         {
+            overlayOn = false;
+            RemoveOverlays();
             if (source != null && source.HasProperty("_Color")) source.color = sailColor;
             if (SailDamageLink.Draws(sail))
                 SailDamageLink.TakeCanvas(sail, source, null);
@@ -247,7 +281,7 @@ namespace SailEmblems
             color = colors != null && sail.activeColor >= 0 && sail.activeColor < colors.Length ? colors[sail.activeColor] : ColorOf(r.sharedMaterial);
             var m = new Material(r.sharedMaterial) { name = r.sharedMaterial.name + " (clean)" };
             if (m.HasProperty("_Color")) m.color = color;
-            Plugin.Log.LogInfo("[Emblems] " + sail.sailName + ": Sail Damage got here first, painting the prefab canvas '" + m.name + "'");
+            Plugin.Debug("[Emblems] " + sail.sailName + ": Sail Damage got here first, painting the prefab canvas '" + m.name + "'");
             return m;
         }
 
@@ -263,7 +297,13 @@ namespace SailEmblems
             if (painted != null) Destroy(painted);
             if (clean != null) Destroy(clean);
             if (bump != null) Destroy(bump);
+            if (overlay != null) Destroy(overlay);
+            if (tornOverlay != null) Destroy(tornOverlay);
+            if (paintedTwin != null) Destroy(paintedTwin);
+            paintedTwin = null;
             painted = clean = bump = null;
+            overlay = tornOverlay = null;
+            overlayOn = false;
             bumpFrom = null;
         }
 
@@ -279,37 +319,67 @@ namespace SailEmblems
             return (ClothScale - frameScale).sqrMagnitude > 1e-6f;
         }
 
-        private bool Bake()
+        // Painting a sail is mostly arithmetic over a million texels or two; on the main thread it froze the game for a
+        // moment at every click in the paint window (Кэп, 1.0.0). Since 1.0.1 the main thread only reads what Unity
+        // must give it (the drawn cloth, the game's canvas) and later uploads the result; the rest runs on a pool
+        // thread, as Sail Damage draws its holes. The sail keeps its old look for the few frames in between.
+        private sealed class Job
+        {
+            // in
+            internal EmblemState State;
+            internal EmblemDef Def;
+            internal Vector2[] Uv;
+            internal Vector3[] Verts;
+            internal int[] Tris;
+            internal Rect UvRect;
+            internal Matrix4x4 ToWorld;
+            internal Vector3 Forward, Starboard;
+            internal int MaxRes, W, H;
+            internal Color32[] Canvas; // the game's, W x H, not tinted yet
+            internal bool Plain;       // a particle blob canvas: one colour taken from the cloth's middle
+            internal Color Tint;
+            internal bool WantClean;
+            internal bool FramedSet;
+            // out
+            internal ClothGeometry Geom;
+            internal Color32[][] Painted, Clean; // mip chains
+            internal float Fit = 1f;
+            internal bool AlongFoot;
+            internal Exception Error;
+            internal volatile bool Done;
+        }
+
+        private Job job;
+
+        private void Begin()
         {
             EmblemDef def = EmblemLibrary.Get(State.Id);
             if (def == null)
             {
                 if (!reported) Plugin.Log.LogWarning("[Emblems] unknown emblem '" + State.Id + "' on " + sail.sailName + " (custom picture removed?), kept in the save");
                 reported = true;
+                stalled = true;
                 if (mat != null) TakeOff(Worn);
-                return false;
+                return;
             }
-
             if (!CanPaint(sail))
             {
                 // painted before it was taken off the list (fin sail): stays plain, the paint stays in the save
                 if (!noLayout) Plugin.Log.LogWarning("[Emblems] " + sail.sailName + " cannot be painted, left plain");
-                noLayout = true;
+                noLayout = stalled = true;
                 if (mat != null) TakeOff(Worn);
-                return false;
+                return;
             }
             // The cloth as drawn: BakeMesh gives a readable copy even of a mesh that is not readable itself.
             var bakedMesh = new Mesh();
             rend.BakeMesh(bakedMesh);
-            Vector2[] uv = bakedMesh.uv;
-            Vector3[] verts = bakedMesh.vertices;
-            int[] tris = bakedMesh.triangles;
+            var j = new Job { State = State, Def = def, Uv = bakedMesh.uv, Verts = bakedMesh.vertices, Tris = bakedMesh.triangles };
             Destroy(bakedMesh);
-            if (!Bounds(uv, out uvRect))
+            if (!Bounds(j.Uv, out uvRect))
             {
                 if (!noLayout) Plugin.Log.LogWarning("[Emblems] " + sail.sailName + ": the cloth has no texture layout (all UVs on one spot), it cannot be painted");
-                noLayout = true;
-                return false;
+                noLayout = stalled = true;
+                return;
             }
             Transform ship = sail.shipRigidbody != null ? sail.shipRigidbody.transform : null;
             if (ship == null)
@@ -317,43 +387,85 @@ namespace SailEmblems
                 Mast mast = GetComponentInParent<Mast>();
                 ship = mast != null && mast.shipRigidbody != null ? mast.shipRigidbody.transform : transform.root;
             }
-            Matrix4x4 toWorld = Matrix4x4.TRS(rend.transform.position, rend.transform.rotation, Vector3.one);
-            // Everything in metres on the sail, X to the reader's right, Y up: the brig's topsail has its texture turned
-            // a quarter round (0.2.0 laid its emblems on their side), the fin sail's is warped (Кэп).
-            geom = ClothGeometry.Measure(uv, verts, tris, uvRect, toWorld, ship, Plugin.TexelsPerMetre, Plugin.Resolution.Value);
-            framedSet = sail.currentUnroll >= 0.9f;
+            j.UvRect = uvRect;
+            j.ToWorld = Matrix4x4.TRS(rend.transform.position, rend.transform.rotation, Vector3.one);
+            j.Forward = ship != null ? ship.forward : Vector3.forward;
+            j.Starboard = ship != null ? ship.right : Vector3.right;
+            j.MaxRes = Plugin.Resolution.Value;
+            ClothGeometry.Size(j.Uv, j.Verts, uvRect, j.ToWorld, Plugin.TexelsPerMetre, j.MaxRes, out j.W, out j.H);
+            Texture main = source.mainTexture;
+            j.Canvas = main != null ? Blit(main, source.mainTextureScale, source.mainTextureOffset, j.W, j.H, false) : null;
+            j.Plain = main != null && main.name.StartsWith("ParticleCloud", StringComparison.Ordinal);
+            j.Tint = sailColor;
+            // the plain canvas: for the studding sails, and for Sail Damage's patches (their weave showed the emblem, Кэп)
+            j.WantClean = StuddingLink.Present || SailDamageLink.Present || State.FrontOnly;
+            j.FramedSet = sail.currentUnroll >= 0.9f;
+            framedSet = j.FramedSet;
             frameScale = ClothScale;
+            job = j;
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    Compute(j);
+                }
+                catch (Exception e)
+                {
+                    j.Error = e;
+                }
+                j.Done = true;
+            });
+        }
 
+        // Off the main thread: only the job's own copies, the emblem's mask and plain arithmetic.
+        private static void Compute(Job j)
+        {
+            EmblemState st = j.State;
+            EmblemDef def = j.Def;
+            // Everything in metres on the sail, X to the reader's right, Y up: the brig's topsail has its texture turned
+            // a quarter round (0.2.0 laid its emblems on their side).
+            ClothGeometry geom = ClothGeometry.Measure(j.Uv, j.Verts, j.Tris, j.UvRect, j.ToWorld, j.Forward, j.Starboard, Plugin.TexelsPerMetre, j.MaxRes);
+            j.Geom = geom;
             int w = geom.W, h = geom.H;
-            Color32[] canvas = Canvas(source, w, h);
-            float sr = sailColor.r, sg = sailColor.g, sb = sailColor.b;
+            Color32[] canvas = j.Canvas ?? new Color32[w * h];
+            if (j.Canvas == null)
+                for (int i = 0; i < canvas.Length; i++) canvas[i] = new Color32(255, 255, 255, 255);
+            if (j.Plain)
+            {
+                // Junk-family sails use a soft particle blob as their canvas and look plain in the game (Sail Damage
+                // notes): keep the colour at the cloth's middle.
+                int x = Mathf.Clamp(Mathf.FloorToInt(geom.CenterS * w), 0, w - 1), y = Mathf.Clamp(Mathf.FloorToInt(geom.CenterT * h), 0, h - 1);
+                Color32 one = canvas[y * w + x];
+                for (int i = 0; i < canvas.Length; i++) canvas[i] = one;
+            }
+            float sr = j.Tint.r, sg = j.Tint.g, sb = j.Tint.b;
             for (int i = 0; i < canvas.Length; i++)
             {
                 Color32 c = canvas[i];
                 canvas[i] = new Color32((byte)(c.r * sr), (byte)(c.g * sg), (byte)(c.b * sb), 255);
             }
 
-            Color32 paint = Palette.Get(State.Color);
+            Color32 paint = Palette.Get(st.Color);
             float spanX = geom.SpanX, spanY = geom.SpanY, cx = geom.CenterX;
-            float hM = State.Size * spanY, wM = hM * def.W / def.H;
+            float hM = st.Size * spanY, wM = hM * def.W / def.H;
             if (wM > 0.94f * spanX) { hM *= 0.94f * spanX / wM; wM = 0.94f * spanX; }
-            float cy = geom.CenterY + State.Offset * spanY;
-            cx += State.OffsetX * spanX;
-            float fit = 1f;
+            float cy = geom.CenterY + st.Offset * spanY;
+            cx += st.OffsetX * spanX;
             PatternFrame frame = null;
             float footprint; // mask pixels under one canvas texel
             if (def.Kind == EmblemKind.Emblem)
             {
                 // keep it on the cloth: the topsail gaff is a narrow triangle, and its emblem came out as stray pieces (Кэп)
-                fit = Fit(def, cx, cy, wM, hM, 0.02f * spanY);
-                wM *= fit;
-                hM *= fit;
-                // mask pixels under one canvas texel: read from the mask's halvings, else a big sail's edges come out toothed
+                j.Fit = Fit(geom, def, st.Mirror, cx, cy, wM, hM, 0.02f * spanY);
+                wM *= j.Fit;
+                hM *= j.Fit;
+                // read from the mask's halvings, else a big sail's edges come out toothed
                 footprint = geom.MetresPerTexel * def.W / wM;
             }
             else
             {
-                frame = PatternFrame.Of(geom, State);
+                frame = PatternFrame.Of(geom, st);
+                j.AlongFoot = st.AlongFoot;
                 footprint = geom.MetresPerTexel * def.W / (frame.SpanX * frame.ScaleX);
             }
 
@@ -366,7 +478,7 @@ namespace SailEmblems
                 {
                     // the mirror turns the picture about its own middle
                     float mx = (wx - cx) / wM;
-                    a = def.Sample((State.Mirror ? -mx : mx) + 0.5f, (wy - cy) / hM + 0.5f, footprint);
+                    a = def.Sample((st.Mirror ? -mx : mx) + 0.5f, (wy - cy) / hM + 0.5f, footprint);
                 }
                 else
                 {
@@ -388,53 +500,214 @@ namespace SailEmblems
                     (byte)Mathf.Clamp(b.b + (paint.b * shade - b.b) * a, 0f, 255f),
                     255);
             }
-
             geom.X = geom.Y = null; // 32 MB on a big sail; only the cloth map is kept
-            painted = Fill(painted, outPx, w, h, "SailEmblem " + sail.sailName);
-            // the plain canvas: for the studding sails, and for Sail Damage's patches (their weave showed the emblem, Кэп)
-            if (StuddingLink.Present || SailDamageLink.Present)
-                clean = Fill(clean, canvas, w, h, "SailEmblem clean " + sail.sailName);
+            j.Canvas = null;
+            j.Painted = Mips(outPx, w, h);
+            if (j.WantClean) j.Clean = Mips(canvas, w, h);
+        }
 
+        // Box-filtered mip chain, as Texture2D.Apply(true) makes it, but off the main thread.
+        private static Color32[][] Mips(Color32[] px, int w, int h)
+        {
+            int levels = 1;
+            for (int s = Mathf.Max(w, h); s > 1; s >>= 1) levels++;
+            var mips = new Color32[levels][];
+            mips[0] = px;
+            for (int l = 1; l < levels; l++)
+            {
+                int sw = Mathf.Max(1, w >> (l - 1)), sh = Mathf.Max(1, h >> (l - 1));
+                int dw = Mathf.Max(1, w >> l), dh = Mathf.Max(1, h >> l);
+                Color32[] src = mips[l - 1], dst = new Color32[dw * dh];
+                for (int y = 0; y < dh; y++)
+                {
+                    int y0 = Mathf.Min(y * 2, sh - 1) * sw, y1 = Mathf.Min(y * 2 + 1, sh - 1) * sw;
+                    for (int x = 0; x < dw; x++)
+                    {
+                        int x0 = Mathf.Min(x * 2, sw - 1), x1 = Mathf.Min(x * 2 + 1, sw - 1);
+                        Color32 a = src[y0 + x0], b = src[y0 + x1], c = src[y1 + x0], d = src[y1 + x1];
+                        dst[y * dw + x] = new Color32((byte)((a.r + b.r + c.r + d.r + 2) >> 2), (byte)((a.g + b.g + c.g + d.g + 2) >> 2),
+                                                      (byte)((a.b + b.b + c.b + d.b + 2) >> 2), (byte)((a.a + b.a + c.a + d.a + 2) >> 2));
+                    }
+                }
+                mips[l] = dst;
+            }
+            return mips;
+        }
+
+        // Back on the main thread: upload, dress the material, hand it to Sail Damage or wear it.
+        private void Finish(Job j)
+        {
+            if (j.Error != null)
+            {
+                if (!reported) Plugin.Log.LogError("[Emblems] painting " + sail.sailName + " failed: " + j.Error);
+                reported = true;
+                return;
+            }
+            if (State.IsEmpty || source == null) return;
+            ClothGeometry geom = j.Geom;
+            painted = Upload(painted, j.Painted, geom.W, geom.H, "SailEmblem " + sail.sailName);
+            if (j.Clean != null) clean = Upload(clean, j.Clean, geom.W, geom.H, "SailEmblem clean " + sail.sailName);
+
+            Shader standard = j.State.FrontOnly ? Shader.Find("Standard") : null;
+            bool front = standard != null && clean != null && !SailDamageLink.Draws(sail);
+            if (j.State.FrontOnly && standard == null && !frontFailed)
+                Plugin.Log.LogWarning("[Emblems] no Standard shader in this build: Front side only paints both sides");
+            frontFailed = j.State.FrontOnly && standard == null;
             if (mat == null)
                 mat = new Material(source) { name = source.name + " (emblem)" };
-            mat.mainTexture = painted;
-            mat.mainTextureScale = new Vector2(1f / uvRect.width, 1f / uvRect.height);
-            mat.mainTextureOffset = new Vector2(-uvRect.xMin / uvRect.width, -uvRect.yMin / uvRect.height);
+            mat.mainTexture = front ? clean : painted;
+            mat.mainTextureScale = new Vector2(1f / j.UvRect.width, 1f / j.UvRect.height);
+            mat.mainTextureOffset = new Vector2(-j.UvRect.xMin / j.UvRect.width, -j.UvRect.yMin / j.UvRect.height);
             if (mat.HasProperty("_Color")) mat.color = new Color(1f, 1f, 1f, sailColor.a);
-            BakeBump(Mathf.Min(w, 1024), Mathf.Min(h, 1024));
+            uvRect = j.UvRect;
+            BakeBump(Mathf.Min(geom.W, 1024), Mathf.Min(geom.H, 1024));
+            FrontSide = geom.FrontSide;
+            if (front) DressOverlay(standard);
+            overlayOn = front;
 
             if (!reported)
-                Plugin.Log.LogInfo("[Emblems] " + sail.sailName + ": " + State + ", shader " + source.shader.name +
+                Plugin.Debug("[Emblems] " + sail.sailName + ": " + j.State + ", shader " + source.shader.name +
                                    ", canvas " + (source.mainTexture != null ? source.mainTexture.name + " " + source.mainTexture.width + "x" + source.mainTexture.height : "none") +
-                                   ", tiling " + source.mainTextureScale + " " + source.mainTextureOffset + ", colour " + sailColor +
-                                   ", uv " + uvRect + ", " + geom.Info +
-                                   (frame != null && State.AlongFoot ? ", along the foot " + Mathf.RoundToInt(Mathf.Atan2(geom.Foot.y, geom.Foot.x) * Mathf.Rad2Deg) + " deg" : "") +
-                                   (fit < 0.999f ? ", emblem shrunk to " + Mathf.RoundToInt(fit * 100f) + "% to stay on the cloth" : "") +
-                                   (framedSet ? "" : " (furled, measured again when set)"));
+                                   ", tiling " + source.mainTextureScale + " " + source.mainTextureOffset + ", colour " + j.Tint +
+                                   ", uv " + j.UvRect + ", " + geom.Info +
+                                   (j.AlongFoot ? ", along the foot " + Mathf.RoundToInt(Mathf.Atan2(geom.Foot.y, geom.Foot.x) * Mathf.Rad2Deg) + " deg" : "") +
+                                   (j.Fit < 0.999f ? ", emblem shrunk to " + Mathf.RoundToInt(j.Fit * 100f) + "% to stay on the cloth" : "") +
+                                   (front ? ", front side only: " + geom.FrontSide : "") +
+                                   (j.FramedSet ? "" : " (furled, measured again when set)"));
             reported = true;
-            return true;
+            Material give = mat;
+            if (front)
+            {
+                // what a torn canvas must be made from: painted, not the plain one the cloth wears now
+                if (paintedTwin == null) paintedTwin = new Material(mat) { name = mat.name + " (painted)" };
+                else paintedTwin.CopyPropertiesFromMaterial(mat);
+                paintedTwin.mainTexture = painted;
+                give = paintedTwin;
+            }
+            if (!SailDamageLink.TakeCanvas(sail, give, clean))
+                Worn = mat;
+            SyncOverlay();
+        }
+
+        // Front side only (Кэп, 1.1 test). The game's canvas shader draws both faces of the cloth with one texture.
+        // Under it the plain canvas on both faces; over it, as a second material on the same renderer (so it moves
+        // with the simulated cloth), the painted canvas on the game's one-sided Standard shader: Unity draws a second
+        // material over the mesh again, its front faces only, at the same depth. Which face is the front is the model's.
+        private void DressOverlay(Shader standard)
+        {
+            if (overlay == null) overlay = new Material(standard) { name = mat.name + " (front)" };
+            overlay.mainTexture = painted;
+            overlay.mainTextureScale = mat.mainTextureScale;
+            overlay.mainTextureOffset = mat.mainTextureOffset;
+            overlay.color = Color.white;
+            if (overlay.HasProperty("_Glossiness")) overlay.SetFloat("_Glossiness", 0.1f); // canvas, not paint on metal
+            if (overlay.HasProperty("_Metallic")) overlay.SetFloat("_Metallic", 0f);
+            if (bump != null)
+            {
+                overlay.SetTexture("_BumpMap", bump);
+                overlay.EnableKeyword("_NORMALMAP");
+            }
+            // after the canvas, so the paint lands on top where both are at the same depth
+            overlay.renderQueue = Mathf.Max(2000, mat.renderQueue) + 1;
+        }
+
+        // The layer is the renderer's second material while the sail is set and wears ours; off when furled (it would
+        // show on the bunched-up cloth), torn, or plain.
+        private void SyncOverlay()
+        {
+            if (rend == null) return;
+            Material want = null;
+            if (State.FrontOnly && !State.IsEmpty && !Furled)
+            {
+                if (SailDamageLink.Draws(sail))
+                    want = TornOverlay();
+                else if (overlayOn && rend.sharedMaterial == mat)
+                    want = overlay;
+            }
+            else if (splitAsked && SailDamageLink.Draws(sail) && (!State.FrontOnly || State.IsEmpty))
+            {
+                SailDamageLink.SetFrontOnly(sail, false);
+                splitAsked = false;
+            }
+            if (want == null && overlay == null && tornOverlay == null) return;
+            Material[] mats = rend.sharedMaterials;
+            bool has = mats.Length == 2 && mats[1] == want;
+            if (want != null && !has)
+                rend.sharedMaterials = new[] { mats.Length > 0 ? mats[0] : mat, want };
+            else if (want == null && mats.Length > 1 && (Array.IndexOf(mats, overlay) >= 0 || Array.IndexOf(mats, tornOverlay) >= 0))
+                rend.sharedMaterials = Array.FindAll(mats, m => m != overlay && m != tornOverlay);
+        }
+
+        private Material tornOverlay;
+        private bool splitAsked;
+
+        private void RemoveOverlays()
+        {
+            if (splitAsked)
+            {
+                SailDamageLink.SetFrontOnly(sail, false);
+                splitAsked = false;
+            }
+            if (rend == null || overlay == null && tornOverlay == null) return;
+            Material[] mats = rend.sharedMaterials;
+            if (mats.Length > 1)
+                rend.sharedMaterials = Array.FindAll(mats, m => m != overlay && m != tornOverlay);
+        }
+
+        // A torn sail (Sail Damage 1.0.3+): Sail Damage draws the holes into the plain canvas it wears and into the
+        // painted one, which goes on top here as a one-sided layer that lets the holes through (blended; the game has
+        // no one-sided cutout shader with a normal map).
+        private Material TornOverlay()
+        {
+            if (!SailDamageLink.SetFrontOnly(sail, true)) return null; // its plain canvas not there yet: next frame
+            splitAsked = true;
+            Texture front = SailDamageLink.FrontTexture(sail, out Vector2 scale, out Vector2 offset);
+            if (front == null) return null;
+            if (tornOverlay == null)
+            {
+                Shader s = Shader.Find("Legacy Shaders/Transparent/Diffuse");
+                if (s == null) return null;
+                tornOverlay = new Material(s) { name = (mat != null ? mat.name : "SailEmblem") + " (front, torn)", color = Color.white };
+            }
+            if (tornOverlay.mainTexture != front) tornOverlay.mainTexture = front;
+            tornOverlay.mainTextureScale = scale;
+            tornOverlay.mainTextureOffset = offset;
+            return tornOverlay;
+        }
+
+        private static Texture2D Upload(Texture2D tex, Color32[][] mips, int w, int h, string name)
+        {
+            if (tex == null || tex.width != w || tex.height != h || tex.mipmapCount != mips.Length)
+            {
+                if (tex != null) Destroy(tex);
+                tex = new Texture2D(w, h, TextureFormat.RGBA32, true) { name = name, wrapMode = TextureWrapMode.Clamp, anisoLevel = 4 };
+            }
+            for (int l = 0; l < mips.Length && l < tex.mipmapCount; l++)
+                tex.SetPixels32(mips[l], l);
+            tex.Apply(false);
+            return tex;
         }
 
         // The largest share (up to 1) of the emblem's size at which all its painted points lie on the cloth.
-        private float Fit(EmblemDef def, float cx, float cy, float wM, float hM, float margin)
+        private static float Fit(ClothGeometry geom, EmblemDef def, bool mirror, float cx, float cy, float wM, float hM, float margin)
         {
-            if (Inside(def, cx, cy, wM, hM, margin)) return 1f;
+            if (Inside(geom, def, mirror, cx, cy, wM, hM, margin)) return 1f;
             float lo = 0.1f, hi = 1f;
-            if (!Inside(def, cx, cy, wM * lo, hM * lo, margin)) return lo;
+            if (!Inside(geom, def, mirror, cx, cy, wM * lo, hM * lo, margin)) return lo;
             for (int k = 0; k < 10; k++)
             {
                 float mid = (lo + hi) * 0.5f;
-                if (Inside(def, cx, cy, wM * mid, hM * mid, margin)) lo = mid;
+                if (Inside(geom, def, mirror, cx, cy, wM * mid, hM * mid, margin)) lo = mid;
                 else hi = mid;
             }
             return lo;
         }
 
-        private bool Inside(EmblemDef def, float cx, float cy, float wM, float hM, float margin)
+        private static bool Inside(ClothGeometry geom, EmblemDef def, bool mirror, float cx, float cy, float wM, float hM, float margin)
         {
             foreach (Vector2 p in def.Solid)
             {
-                float x = cx + (State.Mirror ? 0.5f - p.x : p.x - 0.5f) * wM;
+                float x = cx + (mirror ? 0.5f - p.x : p.x - 0.5f) * wM;
                 if (geom.EdgeDistance(x, cy + (p.y - 0.5f) * hM) < margin) return false;
             }
             return true;
@@ -475,40 +748,6 @@ namespace SailEmblems
             Destroy(m);
             paintable[r.sharedMesh] = ok;
             return ok;
-        }
-
-        private static Texture2D Fill(Texture2D tex, Color32[] px, int w, int h, string name)
-        {
-            if (tex == null || tex.width != w || tex.height != h)
-            {
-                if (tex != null) Destroy(tex);
-                tex = new Texture2D(w, h, TextureFormat.RGBA32, true) { name = name, wrapMode = TextureWrapMode.Clamp, anisoLevel = 4 };
-            }
-            tex.SetPixels32(px);
-            tex.Apply(true);
-            return tex;
-        }
-
-        // The game's canvas (its tiling included) over the cloth's UV rectangle, through the GPU.
-        private Color32[] Canvas(Material src, int w, int h)
-        {
-            Texture main = src.mainTexture;
-            if (main == null)
-            {
-                var white = new Color32[w * h];
-                for (int i = 0; i < white.Length; i++) white[i] = new Color32(255, 255, 255, 255);
-                return white;
-            }
-            Color32[] px = Blit(main, src.mainTextureScale, src.mainTextureOffset, w, h, false);
-            // Junk-family sails use a soft particle blob as their canvas and look plain in the game (Sail Damage notes):
-            // keep the colour at the cloth's middle.
-            if (main.name.StartsWith("ParticleCloud", StringComparison.Ordinal))
-            {
-                int x = Mathf.Clamp(Mathf.FloorToInt(geom.CenterS * w), 0, w - 1), y = Mathf.Clamp(Mathf.FloorToInt(geom.CenterT * h), 0, h - 1);
-                Color32 one = px[y * w + x];
-                for (int i = 0; i < px.Length; i++) px[i] = one;
-            }
-            return px;
         }
 
         private Color32[] Blit(Texture t, Vector2 sc, Vector2 of, int w, int h, bool linear)

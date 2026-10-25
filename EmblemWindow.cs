@@ -1,4 +1,4 @@
-using HarmonyLib;
+﻿using HarmonyLib;
 using UnityEngine;
 
 namespace SailEmblems
@@ -158,9 +158,12 @@ namespace SailEmblems
             {
                 var d = EmblemState.Default(st.Id, target);
                 d.Color = st.Color;
+                d.FrontOnly = st.FrontOnly;
                 Apply(d);
             }
             GUILayout.EndHorizontal();
+            bool front = GUILayout.Toggle(st.FrontOnly, new GUIContent("Front side only", "Paint one face of the sail and leave the back plain. Which face is the front is set by the sail model; the line below shows where it faces. Torn sails keep it with Sail Damage 1.0.3 or newer."));
+            if (front != st.FrontOnly) { st.FrontOnly = front; Apply(st); }
             GUI.enabled = true;
             if (pendingApply)
             {
@@ -168,6 +171,11 @@ namespace SailEmblems
                 Apply(st);
             }
 
+            if (st.FrontOnly)
+            {
+                var e = SailEmblem.Of(target, false);
+                GUILayout.Label("Painted side: " + (e != null && e.FrontSide != null ? e.FrontSide : "..."));
+            }
             GUILayout.Space(6f);
             int fee = Fee(target);
             GUILayout.Label(target.IsInstalled()

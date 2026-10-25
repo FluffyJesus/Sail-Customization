@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Reflection;
 using HarmonyLib;
 using UnityEngine;
@@ -17,6 +17,9 @@ namespace SailEmblems
         private static bool tried;
         private static Func<Sail, Material, Texture, bool> take;
         private static Func<Sail, bool> draws;
+        private static Func<Sail, bool, bool> setFrontOnly;
+        private delegate Texture FrontTextureFn(Sail sail, out Vector2 scale, out Vector2 offset);
+        private static FrontTextureFn frontTexture;
         private static bool old;
 
         private static void Init()
@@ -35,7 +38,15 @@ namespace SailEmblems
             }
             take = (Func<Sail, Material, Texture, bool>)Delegate.CreateDelegate(typeof(Func<Sail, Material, Texture, bool>), mt);
             draws = (Func<Sail, bool>)Delegate.CreateDelegate(typeof(Func<Sail, bool>), md);
-            Plugin.Log.LogInfo("[Emblems] Sail Damage found: torn sails keep their emblems");
+            // 1.0.3: Front side only on torn sails
+            MethodInfo mf = AccessTools.Method(t, "SetFrontOnly", new[] { typeof(Sail), typeof(bool) });
+            MethodInfo mx = AccessTools.Method(t, "FrontTexture");
+            if (mf != null && mx != null && mf.IsStatic && mx.IsStatic)
+            {
+                setFrontOnly = (Func<Sail, bool, bool>)Delegate.CreateDelegate(typeof(Func<Sail, bool, bool>), mf);
+                frontTexture = (FrontTextureFn)Delegate.CreateDelegate(typeof(FrontTextureFn), mx);
+            }
+            Plugin.Debug("[Emblems] Sail Damage found: torn sails keep their emblems");
         }
 
         /// <summary>Sail Damage 1.0.2+ is there and takes our canvases.</summary>
@@ -58,6 +69,21 @@ namespace SailEmblems
             Renderer r = sail.cloth != null ? sail.cloth.GetComponent<Renderer>() : null;
             Material m = r != null ? r.sharedMaterial : null;
             return m != null && m.name.IndexOf(" (torn)", StringComparison.Ordinal) >= 0;
+        }
+
+        /// <summary>Asks Sail Damage to draw the holes into the plain canvas too (Front side only); true if it does.</summary>
+        internal static bool SetFrontOnly(Sail sail, bool on)
+        {
+            Init();
+            return setFrontOnly != null && setFrontOnly(sail, on);
+        }
+
+        /// <summary>The painted canvas with Sail Damage's holes, for the one-sided layer; null if not split.</summary>
+        internal static Texture FrontTexture(Sail sail, out Vector2 scale, out Vector2 offset)
+        {
+            scale = Vector2.one;
+            offset = Vector2.zero;
+            return frontTexture != null ? frontTexture(sail, out scale, out offset) : null;
         }
 
         /// <summary>Hands Sail Damage the new canvas; true if it draws this sail (and now wears its torn copy of it).</summary>
@@ -93,7 +119,7 @@ namespace SailEmblems
             }
             harmony.Patch(sync, postfix: new HarmonyMethod(typeof(StuddingLink), nameof(SyncColorPostfix)));
             Present = true;
-            Plugin.Log.LogInfo("[Emblems] Studding Sails found: studding sails get the plain canvas");
+            Plugin.Debug("[Emblems] Studding Sails found: studding sails get the plain canvas");
         }
 
         private static void SyncColorPostfix(object __instance)
