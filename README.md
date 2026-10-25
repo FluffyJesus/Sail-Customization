@@ -18,8 +18,6 @@ Bring your own colours to sea: a red lion on the mainsail, a seigaiha wave patte
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Compatibility and saves](#compatibility-and-saves)
-- [Building from source](#building-from-source)
-- [Changes](#changes)
 
 ---
 
