@@ -26,6 +26,18 @@ namespace SailEmblems
         // From the save, not matched to a sail yet (that boat not found yet); written back so nothing is lost.
         private static readonly Dictionary<string, EmblemState> pending = new Dictionary<string, EmblemState>();
         private static float retry;
+        // Installed sails whose paint was taken off at the shipyard since the order was opened: taking it off is free, so
+        // leaving the yard without confirming (which cancels the order and builds the sails again from the records
+        // taken when it was opened) must not bring it back (Кэп, 1.1.1).
+        private static readonly HashSet<string> takenOff = new HashSet<string>();
+
+        internal static void TakenOff(Sail sail, bool off)
+        {
+            string key = sail != null && sail.IsInstalled() ? SaveKey(sail) : null;
+            if (key == null) return;
+            if (off) takenOff.Add(key);
+            else takenOff.Remove(key);
+        }
 
         internal static string SaveKey(Sail sail)
         {
@@ -125,6 +137,8 @@ namespace SailEmblems
                 GameObject go = __instance.sails[__instance.sails.Count - 1];
                 Sail sail = go != null ? go.GetComponent<Sail>() : null;
                 if (sail == null) return;
+                string key = SaveKey(sail);
+                if (key != null && takenOff.Contains(key)) return;
                 SailEmblem.Set(sail, __state.State, true);
                 SailEmblem e = SailEmblem.Of(sail, false);
                 if (e != null) e.Committed = __state.State;
@@ -220,6 +234,7 @@ namespace SailEmblems
         {
             private static void Postfix(Shipyard __instance)
             {
+                takenOff.Clear();
                 GameObject boat = __instance.GetCurrentBoat();
                 if (boat == null) return;
                 foreach (SailEmblem e in boat.GetComponentsInChildren<SailEmblem>(true))

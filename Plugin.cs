@@ -11,7 +11,7 @@ namespace SailEmblems
     {
         public const string GUID = "fluffyjesus.sailwind.sailemblems";
         public const string NAME = "Sail Emblems";
-        public const string VERSION = "1.1.0";
+        public const string VERSION = "1.1.1";
 
         internal static ManualLogSource Log;
 
@@ -30,7 +30,7 @@ namespace SailEmblems
         }
 
         private Harmony harmony;
-        private bool linked, probed;
+        private bool linked;
 
         private void Awake()
         {
@@ -63,45 +63,9 @@ namespace SailEmblems
             {
                 linked = true;
                 StuddingLink.Init(harmony);
-                ProbeShaders();
-            }
-            if (!probed && GameState.playing)
-            {
-                probed = true;
-                ProbeShaders();
             }
             EmblemWindow.Update();
             EmblemStore.Update();
-        }
-
-        // For painting one face only (Кэп asked): the game's canvas shader draws both faces with one texture, so the
-        // emblem would need a second, one-sided layer. Which shaders the build has decides how; logged once.
-        private static void ProbeShaders()
-        {
-            string[] names =
-            {
-                "Ciconia Studio/Double Sided/Standard/Diffuse Bump", "Ciconia Studio/Double Sided/Transparent/Diffuse Bump Cutout",
-                "Standard", "Legacy Shaders/Transparent/Cutout/Bumped Diffuse", "Legacy Shaders/Transparent/Cutout/Diffuse",
-                "Legacy Shaders/Transparent/Diffuse", "Unlit/Transparent Cutout", "Sprites/Default",
-            };
-            var sb = new System.Text.StringBuilder("[Emblems] shaders:");
-            foreach (string n in names)
-            {
-                Shader s = Shader.Find(n);
-                sb.Append(" '").Append(n).Append("' ").Append(s == null ? "missing" : s.isSupported ? "ok" : "unsupported").Append(';');
-                if (s != null)
-                {
-                    var m = new Material(s);
-                    foreach (string p in new[] { "_Cull", "_CullMode", "_Cutoff", "_BumpMap" })
-                        if (m.HasProperty(p)) sb.Append(' ').Append(p);
-                    Destroy(m);
-                }
-            }
-            foreach (Shader s in Resources.FindObjectsOfTypeAll<Shader>())
-                if (s.name.IndexOf("Double Sided", System.StringComparison.Ordinal) >= 0 || s.name.IndexOf("Single", System.StringComparison.Ordinal) >= 0 ||
-                    s.name.IndexOf("Cutout", System.StringComparison.Ordinal) >= 0)
-                    sb.Append(" | loaded '").Append(s.name).Append('\'');
-            Debug(sb.ToString());
         }
 
         private void OnGUI()

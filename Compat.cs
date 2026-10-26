@@ -6,11 +6,27 @@ using UnityEngine;
 namespace SailEmblems
 {
     /// <summary>
-    /// Sail Damage (Кэп's mod, optional). On a damaged sail it wears its own torn copy of the canvas it found on the
-    /// cloth, i.e. of ours. From 1.0.2 it takes a new canvas through SailVisuals.TakeCanvas(Sail, Material, Texture)
-    /// (painted canvas, and the same without the emblem for the studding sails) and says whether it draws the sail
-    /// through SailVisuals.Draws(Sail). Not referenced, found by reflection: older versions just lack the link, and
-    /// then the two mods would swap materials, so we keep off sails it draws.
+    /// Sail Damage (Кэп's mod, optional). The whole contract between the two mods, both sides; the methods are public
+    /// statics on SailDamage.SailVisuals, found by reflection (neither mod references the other), so keep the
+    /// signatures on both sides.
+    ///
+    ///  Draws(Sail) -> bool (1.0.2)
+    ///    Sail Damage wears its own torn canvas on this sail. While it does, we leave the cloth's material to it.
+    ///  TakeCanvas(Sail, Material painted, Texture clean) -> bool (1.0.2)
+    ///    Called after every painting. Sail Damage keeps both for the sail (a torn canvas is made from painted, the
+    ///    plain one gives studding sails, patches and the back their canvas) and, if it draws the sail, reads its torn
+    ///    canvas again from painted and wears it: true. With Front side only, painted is PaintedCanvas.Twin (the cloth
+    ///    itself wears the plain canvas then). Taking the paint off hands over the game's canvas and no clean one.
+    ///  SetFrontOnly(Sail, bool) -> bool (1.0.3)
+    ///    Front side only on a torn sail: Sail Damage wears the plain canvas with its holes and keeps the painted one
+    ///    with the same holes; true once it does (it needs the clean canvas from TakeCanvas first).
+    ///  FrontTexture(Sail, out scale, out offset) -> Texture (1.0.3)
+    ///    That painted canvas with holes and its tiling, for FrontLayer's torn layer.
+    ///  Sail Damage on its own, 1.0.3: a sail mended as new at the shipyard is handed back, and the material it was made
+    ///    from (ours or the Twin) goes on again; SailEmblem puts ours back from there (Wearing.PaintedTwin).
+    ///
+    /// Before 1.0.2 there was no link and the two mods would swap materials every frame: we keep off sails whose
+    /// material is called "... (torn)", and a torn sail keeps the emblem it had when it first tore.
     /// </summary>
     internal static class SailDamageLink
     {

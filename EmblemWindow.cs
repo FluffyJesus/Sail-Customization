@@ -209,6 +209,7 @@ namespace SailEmblems
 
         private static void Apply(EmblemState st)
         {
+            EmblemStore.TakenOff(target, st.IsEmpty);
             SailEmblem.Set(target, st, true);
             if (GameState.currentShipyard != null) GameState.currentShipyard.UpdateOrder();
             if (ShipyardUI.instance != null)

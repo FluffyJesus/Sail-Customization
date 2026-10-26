@@ -183,6 +183,7 @@ namespace SailEmblems
             bool hasAlpha = false;
             foreach (var p in px) if (p.a < 250) { hasAlpha = true; break; }
 
+            int w = tex.width, h = tex.height;
             var mask = new byte[px.Length];
             for (int i = 0; i < px.Length; i++)
             {
@@ -190,13 +191,9 @@ namespace SailEmblems
                 if (hasAlpha) mask[i] = p.a;
                 else mask[i] = (byte)(255 - (p.r * 30 + p.g * 59 + p.b * 11) / 100); // dark = paint
             }
-
-            var thumbPx = new Color32[px.Length];
-            for (int i = 0; i < px.Length; i++) thumbPx[i] = new Color32(255, 255, 255, mask[i]);
-            var thumb = new Texture2D(tex.width, tex.height, TextureFormat.RGBA32, true);
-            thumb.SetPixels32(thumbPx);
-            thumb.Apply(true, true);
-            thumb.name = "SailEmblemThumb_" + name;
+            UnityEngine.Object.Destroy(tex);
+            // Players paint photos (Кэп): a 4000 px picture held 16 MB of mask. A sail never needs more than 1024.
+            while (Mathf.Max(w, h) > 1024) mask = Halve(mask, ref w, ref h);
 
             var def = new EmblemDef
             {
@@ -204,18 +201,50 @@ namespace SailEmblems
                 Custom = custom,
                 Name = (custom ? "* " : "") + name.Replace('_', ' '),
                 Id = (kind == EmblemKind.Emblem ? "e:" : "p:") + (custom ? "custom/" : "") + name,
-                W = tex.width,
-                H = tex.height,
+                W = w,
+                H = h,
                 Mask = mask,
-                Thumb = thumb,
             };
-            UnityEngine.Object.Destroy(tex);
+            def.Thumb = Thumbnail(def, name);
 
             if (byId.ContainsKey(def.Id)) return;
             byId[def.Id] = def;
             (kind == EmblemKind.Emblem ? Emblems : Patterns).Add(def);
         }
-    }
+
+        // The window shows them at 64 px; 0.1-1.1.1 kept each at its full size with mipmaps (about 1.3 MB of video
+        // memory per built-in picture, 80 MB for the set).
+        private static Texture2D Thumbnail(EmblemDef def, string name)
+        {
+            const int Size = 96;
+            int tw = def.W >= def.H ? Size : Mathf.Max(8, Size * def.W / def.H);
+            int th = def.H >= def.W ? Size : Mathf.Max(8, Size * def.H / def.W);
+            float footprint = (float)def.W / tw;
+            var px = new Color32[tw * th];
+            for (int y = 0; y < th; y++)
+                for (int x = 0; x < tw; x++)
+                    px[y * tw + x] = new Color32(255, 255, 255, (byte)(255f * def.Sample((x + 0.5f) / tw, (y + 0.5f) / th, footprint)));
+            var thumb = new Texture2D(tw, th, TextureFormat.RGBA32, false) { name = "SailEmblemThumb_" + name };
+            thumb.SetPixels32(px);
+            thumb.Apply(false, true);
+            return thumb;
+        }
+
+        private static byte[] Halve(byte[] m, ref int w, ref int h)
+        {
+            int dw = Mathf.Max(1, w / 2), dh = Mathf.Max(1, h / 2);
+            var d = new byte[dw * dh];
+            for (int y = 0; y < dh; y++)
+                for (int x = 0; x < dw; x++)
+                {
+                    int x0 = Mathf.Min(x * 2, w - 1), x1 = Mathf.Min(x * 2 + 1, w - 1);
+                    int y0 = Mathf.Min(y * 2, h - 1) * w, y1 = Mathf.Min(y * 2 + 1, h - 1) * w;
+                    d[y * dw + x] = (byte)((m[y0 + x0] + m[y0 + x1] + m[y1 + x0] + m[y1 + x1] + 2) >> 2);
+                }
+            w = dw;
+            h = dh;
+            return d;
+        }    }
 
     /// <summary>Paint colours: muted, period-plausible pigments. Index is what the save stores.</summary>
     internal static class Palette
